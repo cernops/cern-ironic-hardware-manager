@@ -1,0 +1,32 @@
+*.py[co]
+src/*
+build/*
+AUTHORS
+ChangeLog
+*.egg*
+.tox/*
+.idea
+devenv/*
+cover
+.coverage
+coverage.xml
+.testrepository
+imagebuild/.image_cache
+imagebuild/coreos/build
+imagebuild/coreos/dist
+imagebuild/coreos/oem/authorized_keys
+imagebuild/coreos/oem/container.tar.gz
+imagebuild/coreos/UPLOAD
+*.swp
+_build
+doc/source/api/
+doc/build
+.proxy.sh.save
+
+# release notes build
+releasenotes/build
+
+# upper-constraints handling for image builds
+upper-constraints.txt
+
+venv/*
