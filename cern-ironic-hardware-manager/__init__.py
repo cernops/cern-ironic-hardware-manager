@@ -1,18 +1,5 @@
-# Copyright 2015 Rackspace, Inc.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#   http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-from ironic_python_agent import hardware
+import time
+from ironic_python_agent import errors, hardware
 from oslo_log import log
 
 LOG = log.getLogger()
@@ -47,16 +34,12 @@ def _upgrade_firmware():
     return True
 
 
-class ExampleDeviceHardwareManager(hardware.HardwareManager):
-    """Example hardware manager to support a single device"""
-
-    # All hardware managers have a name and a version.
-    # Version should be bumped anytime a change is introduced. This will
-    # signal to Ironic that if automatic node cleaning is in progress to
-    # restart it from the beginning, to ensure consistency. The value can
-    # be anything; it's checked for equality against previously seen
-    # name:manager pairs.
-    HARDWARE_MANAGER_NAME = 'ExampleDeviceHardwareManager'
+class CernHardwareManager(hardware.GenericHardwareManager):
+    # Overrides superclass's name (generic_hardware_manager).
+    HARDWARE_MANAGER_NAME = 'cern_hardware_manager'
+    # This should be incremented at every upgrade to avoid making the agent
+    # change which hardware manager it uses when cleaning in the middle of a
+    # hardware manager upgrade.
     HARDWARE_MANAGER_VERSION = '1'
 
     def evaluate_hardware_support(self):
@@ -116,7 +99,8 @@ class ExampleDeviceHardwareManager(hardware.HardwareManager):
         # While obviously you could actively run code here, generally this
         # should just return a static value, as any initialization and
         # detection should've been done in evaluate_hardware_support().
-        return [{
+        return [
+            {
                 'step': 'upgrade_example_device_model1234_firmware',
                 'priority': 37,
                 # If you need Ironic to coordinate a reboot after this step
@@ -125,7 +109,18 @@ class ExampleDeviceHardwareManager(hardware.HardwareManager):
                 # If it's safe for Ironic to abort cleaning while this step
                 # runs, this should be true.
                 'abortable': False
-           }]
+            },
+            {
+                'step': 'companyx_verify_device_lifecycle',
+                'priority': 472,
+                # If you need Ironic to coordinate a reboot after this step
+                # runs, but before continuing cleaning, this should be true.
+                'reboot_requested': False,
+                # If it's safe for Ironic to abort cleaning while this step
+                # runs, this should be true.
+                'abortable': True
+            }
+        ]
 
     def upgrade_example_device_model1234_firmware(self, node, ports):
         """Upgrade firmware on Example Device Model #1234."""
@@ -149,3 +144,19 @@ class ExampleDeviceHardwareManager(hardware.HardwareManager):
                 LOG.exception(e)
                 raise
             return True
+
+    def companyx_verify_device_lifecycle(self, node, ports):
+        """Verify node is not beyond useful life of 3 years."""
+        # Other examples of interesting cleaning steps for this kind of hardware
+        # manager would include verifying node.properties matches current state of
+        # the node, checking smart stats to ensure the disk is not soon to fail,
+        # or enforcing security policies.
+        create_date = node.get('created_at')
+        if create_date is not None:
+            server_age = time.time() - time.mktime(time.strptime(create_date))
+            if server_age > (60 * 60 * 24 * 365 * 3):
+                raise errors.CleaningError(
+                        'Server is too old to pass cleaning!')
+            else:
+                LOG.info('Node is %s seconds old, younger than 3 years, '
+                         'cleaning passes.', server_age)

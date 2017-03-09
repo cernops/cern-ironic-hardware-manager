@@ -28,5 +28,3 @@ releasenotes/build
 
 # upper-constraints handling for image builds
 upper-constraints.txt
-
-venv/*
