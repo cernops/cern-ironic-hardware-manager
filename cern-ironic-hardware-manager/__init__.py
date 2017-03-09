@@ -49,7 +49,7 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         # Perform any operations here that are required to initialize your
         # hardware.
         LOG.debug('Loading drivers, settling udevs, and generally initalizing')
-        pass
+        super(CernHardwareManager, self).evaluate_hardware_support()
 
     def _detect_hardware(self):
         """Example method for hardware detection."""
@@ -58,28 +58,7 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         return True
 
     def get_clean_steps(self, node, ports):
-        """Get a list of clean steps with priority.
-
-        Define any clean steps added by this manager here. These will be mixed
-        with other loaded managers that support this hardware, and ordered by
-        priority. Higher priority steps run earlier.
-
-        Note that out-of-band clean steps may also be provided by Ironic.
-        These will follow the same priority ordering even though they are not
-        executed by IPA.
-
-        There is *no guarantee whatsoever* that steps defined here will be
-        executed by this HardwareManager. When it comes time to run these
-        steps, they'll be called using dispatch_to_managers() just like any
-        other IPA HardwareManager method. This means if they are unique to
-        your hardware, they should be uniquely named. For example,
-        upgrade_firmware would be a bad step name. Whereas
-        upgrade_foobar_device_firmware would be better.
-
-        :param node: The node object as provided by Ironic.
-        :param ports: Port objects as provided by Ironic.
-        :returns: A list of cleaning steps, as a list of dicts.
-        """
+        """Get a list of clean steps with priority."""
         # While obviously you could actively run code here, generally this
         # should just return a static value, as any initialization and
         # detection should've been done in evaluate_hardware_support().
@@ -96,12 +75,22 @@ class CernHardwareManager(hardware.GenericHardwareManager):
             },
             {
                 'step': 'companyx_verify_device_lifecycle',
-                'priority': 472,
-                # If you need Ironic to coordinate a reboot after this step
-                # runs, but before continuing cleaning, this should be true.
+                'priority': 45,
                 'reboot_requested': False,
-                # If it's safe for Ironic to abort cleaning while this step
-                # runs, this should be true.
+                'abortable': True
+            },
+            {
+                'step': 'erase_devices',
+                'priority': 98,
+                'interface': 'deploy',
+                'reboot_requested': False,
+                'abortable': True
+            },
+            {
+                'step': 'erase_devices_metadata',
+                'priority': 99,
+                'interface': 'deploy',
+                'reboot_requested': False,
                 'abortable': True
             }
         ]
@@ -154,3 +143,11 @@ class CernHardwareManager(hardware.GenericHardwareManager):
             else:
                 LOG.info('Node is %s seconds old, younger than 3 years, '
                          'cleaning passes.', server_age)
+
+    def erase_devices(self, node, ports):
+        """Erase any device that holds user data."""
+        super(CernHardwareManager, self).erase_devices(node, ports)
+
+    def erase_devices_metadata(self, node, ports):
+        """Attempt to erase the disk devices metadata."""
+        super(CernHardwareManager, self).erase_devices_metadata(node, ports)
