@@ -5,35 +5,6 @@ from oslo_log import log
 LOG = log.getLogger()
 
 
-# All the helper methods should be kept outside of the HardwareManager
-# so they'll never get accidentally called by dispatch_to_managers()
-def _initialize_hardware():
-    """Example method for initalizing hardware."""
-    # Perform any operations here that are required to initialize your
-    # hardware.
-    LOG.debug('Loading drivers, settling udevs, and generally initalizing')
-    pass
-
-
-def _detect_hardware():
-    """Example method for hardware detection."""
-    # For this example, return true if hardware is detected, false if not
-    LOG.debug('Looking for example device')
-    return True
-
-
-def _is_latest_firmware():
-    """Detect if device is running latest firmware."""
-    # Actually detect the firmware version instead of returning here.
-    return True
-
-
-def _upgrade_firmware():
-    """Upgrade firmware on device."""
-    # Actually perform firmware upgrade instead of returning here.
-    return True
-
-
 class CernHardwareManager(hardware.GenericHardwareManager):
     # Overrides superclass's name (generic_hardware_manager).
     HARDWARE_MANAGER_NAME = 'cern_hardware_manager'
@@ -59,8 +30,8 @@ class CernHardwareManager(hardware.GenericHardwareManager):
 
         :returns: HardwareSupport level for this manager.
         """
-        _initialize_hardware()
-        if _detect_hardware():
+        self._initialize_hardware()
+        if self._detect_hardware():
             # This actually resolves down to an int. Upstream IPA will never
             # return a value higher than 2 (HardwareSupport.MAINLINE). This
             # means your managers should always be SERVICE_PROVIDER or higher.
@@ -72,6 +43,19 @@ class CernHardwareManager(hardware.GenericHardwareManager):
             # attempting to use any methods inside it.
             LOG.debug('No example devices found, returning NONE')
             return hardware.HardwareSupport.NONE
+
+    def _initialize_hardware(self):
+        """Example method for initalizing hardware."""
+        # Perform any operations here that are required to initialize your
+        # hardware.
+        LOG.debug('Loading drivers, settling udevs, and generally initalizing')
+        pass
+
+    def _detect_hardware(self):
+        """Example method for hardware detection."""
+        # For this example, return true if hardware is detected, false if not
+        LOG.debug('Looking for example device')
+        return True
 
     def get_clean_steps(self, node, ports):
         """Get a list of clean steps with priority.
@@ -130,7 +114,7 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         # good practice in some environments would be to check the firmware
         # version against a constant in the code, and noop the method if an
         # upgrade is not needed.
-        if _is_latest_firmware():
+        if self._is_latest_firmware():
             LOG.debug('Latest firmware already flashed, skipping')
             # Return values are ignored here on success
             return True
@@ -138,12 +122,22 @@ class CernHardwareManager(hardware.GenericHardwareManager):
             LOG.debug('Firmware version X found, upgrading to Y')
             # Perform firmware upgrade.
             try:
-                _upgrade_firmware()
+                self._upgrade_firmware()
             except Exception as e:
                 # Log and pass through the exception so cleaning will fail
                 LOG.exception(e)
                 raise
             return True
+
+    def _is_latest_firmware(self):
+        """Detect if device is running latest firmware."""
+        # Actually detect the firmware version instead of returning here.
+        return True
+
+    def _upgrade_firmware(self):
+        """Upgrade firmware on device."""
+        # Actually perform firmware upgrade instead of returning here.
+        return True
 
     def companyx_verify_device_lifecycle(self, node, ports):
         """Verify node is not beyond useful life of 3 years."""
