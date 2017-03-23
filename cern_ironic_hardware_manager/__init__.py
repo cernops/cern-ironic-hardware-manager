@@ -57,6 +57,23 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         LOG.debug('Looking for example device')
         return True
 
+    def list_hardware_info(self):
+        """Return full hardware inventory as a serializable dict.
+
+        This inventory is sent to Ironic on lookup and to Inspector on
+        inspection.
+
+        :return: a dictionary representing inventory
+        """
+        hardware_info = {'interfaces': self.list_network_interfaces(),
+                         'cpu': self.get_cpus(),
+                         'disks': self.list_block_devices(),
+                         'memory': self.get_memory(),
+                         'ipmi_address': self.get_bmc_address(),
+                         'system_vendor': self.get_system_vendor_info(),
+                         'boot': self.get_boot_info()}
+        return hardware_info
+
     def get_clean_steps(self, node, ports):
         """Get a list of clean steps with priority."""
         # While obviously you could actively run code here, generally this
