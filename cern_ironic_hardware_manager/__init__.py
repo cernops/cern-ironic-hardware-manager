@@ -32,32 +32,8 @@ class CernHardwareManager(hardware.GenericHardwareManager):
 
         :returns: HardwareSupport level for this manager.
         """
-        self._initialize_hardware()
-        if self._detect_hardware():
-            # This actually resolves down to an int. Upstream IPA will never
-            # return a value higher than 2 (HardwareSupport.MAINLINE). This
-            # means your managers should always be SERVICE_PROVIDER or higher.
-            LOG.debug('Found example device, returning SERVICE_PROVIDER')
-            return hardware.HardwareSupport.SERVICE_PROVIDER
-        else:
-            # If the hardware isn't supported, return HardwareSupport.NONE (0)
-            # in order to prevent IPA from loading its clean steps or
-            # attempting to use any methods inside it.
-            LOG.debug('No example devices found, returning NONE')
-            return hardware.HardwareSupport.NONE
-
-    def _initialize_hardware(self):
-        """Example method for initalizing hardware."""
-        # Perform any operations here that are required to initialize your
-        # hardware.
-        LOG.debug('Loading drivers, settling udevs, and generally initalizing')
         super(CernHardwareManager, self).evaluate_hardware_support()
-
-    def _detect_hardware(self):
-        """Example method for hardware detection."""
-        # For this example, return true if hardware is detected, false if not
-        LOG.debug('Looking for example device')
-        return True
+        return hardware.HardwareSupport.SERVICE_PROVIDER
 
     def list_hardware_info(self):
         """Return full hardware inventory as a serializable dict.
