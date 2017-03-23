@@ -1,4 +1,6 @@
 import time
+import urllib2
+
 from ironic_python_agent import errors, hardware
 from oslo_log import log
 
@@ -65,6 +67,9 @@ class CernHardwareManager(hardware.GenericHardwareManager):
 
         :return: a dictionary representing inventory
         """
+        aims_deregistration = urllib2.urlopen(
+            "http://linuxsoft.cern.ch/aims2server/aims2reboot.cgi").read()
+        LOG.info(aims_deregistration)
         return super(CernHardwareManager, self).list_hardware_info()
 
     def get_clean_steps(self, node, ports):
