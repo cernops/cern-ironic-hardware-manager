@@ -33,7 +33,13 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         :returns: HardwareSupport level for this manager.
         """
         super(CernHardwareManager, self).evaluate_hardware_support()
+        self._deregister_from_aims(
+            "http://linuxsoft.cern.ch/aims2server/aims2reboot.cgi")
         return hardware.HardwareSupport.SERVICE_PROVIDER
+
+    def _deregister_from_aims(self, url):
+        aims_deregistration = urllib2.urlopen(url).read()
+        LOG.info(aims_deregistration)
 
     def list_hardware_info(self):
         """Return full hardware inventory as a serializable dict.
@@ -43,9 +49,6 @@ class CernHardwareManager(hardware.GenericHardwareManager):
 
         :return: a dictionary representing inventory
         """
-        aims_deregistration = urllib2.urlopen(
-            "http://linuxsoft.cern.ch/aims2server/aims2reboot.cgi").read()
-        LOG.info(aims_deregistration)
         return super(CernHardwareManager, self).list_hardware_info()
 
     def get_clean_steps(self, node, ports):
@@ -57,6 +60,7 @@ class CernHardwareManager(hardware.GenericHardwareManager):
             {
                 'step': 'upgrade_example_device_model1234_firmware',
                 'priority': 37,
+                'interface': 'deploy',
                 # If you need Ironic to coordinate a reboot after this step
                 # runs, but before continuing cleaning, this should be true.
                 'reboot_requested': True,
@@ -67,6 +71,7 @@ class CernHardwareManager(hardware.GenericHardwareManager):
             {
                 'step': 'companyx_verify_device_lifecycle',
                 'priority': 45,
+                'interface': 'deploy',
                 'reboot_requested': False,
                 'abortable': True
             },
@@ -130,7 +135,7 @@ class CernHardwareManager(hardware.GenericHardwareManager):
             server_age = time.time() - time.mktime(time.strptime(create_date))
             if server_age > (60 * 60 * 24 * 365 * 3):
                 raise errors.CleaningError(
-                        'Server is too old to pass cleaning!')
+                    'Server is too old to pass cleaning!')
             else:
                 LOG.info('Node is %s seconds old, younger than 3 years, '
                          'cleaning passes.', server_age)
