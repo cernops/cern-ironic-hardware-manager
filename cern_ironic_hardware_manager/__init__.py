@@ -68,13 +68,13 @@ class CernHardwareManager(hardware.GenericHardwareManager):
                 # runs, this should be true.
                 'abortable': False
             },
-            {
-                'step': 'companyx_verify_device_lifecycle',
-                'priority': 45,
-                'interface': 'deploy',
-                'reboot_requested': False,
-                'abortable': True
-            },
+            # {
+            #     'step': 'companyx_verify_device_lifecycle',
+            #     'priority': 45,
+            #     'interface': 'deploy',
+            #     'reboot_requested': False,
+            #     'abortable': True
+            # },
             {
                 'step': 'erase_devices',
                 'priority': 98,
