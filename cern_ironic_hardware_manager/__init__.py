@@ -63,7 +63,7 @@ class CernHardwareManager(hardware.GenericHardwareManager):
                 'interface': 'deploy',
                 # If you need Ironic to coordinate a reboot after this step
                 # runs, but before continuing cleaning, this should be true.
-                'reboot_requested': True,
+                'reboot_requested': False,
                 # If it's safe for Ironic to abort cleaning while this step
                 # runs, this should be true.
                 'abortable': False
