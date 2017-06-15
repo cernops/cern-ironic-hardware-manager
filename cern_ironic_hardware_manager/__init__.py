@@ -142,7 +142,8 @@ class CernHardwareManager(hardware.GenericHardwareManager):
 
     def erase_devices(self, node, ports):
         """Erase any device that holds user data."""
-        super(CernHardwareManager, self).erase_devices(node, ports)
+        # super(CernHardwareManager, self).erase_devices(node, ports)
+        return True
 
     def erase_devices_metadata(self, node, ports):
         """Attempt to erase the disk devices metadata."""
