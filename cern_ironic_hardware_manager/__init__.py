@@ -73,14 +73,14 @@ class CernHardwareManager(hardware.GenericHardwareManager):
                 'priority': 0,
                 'interface': 'deploy',
                 'reboot_requested': False,
-                'abortable': True
+                'abortable': False
             },
             {
                 'step': 'erase_devices_metadata',
                 'priority': 0,
                 'interface': 'deploy',
                 'reboot_requested': False,
-                'abortable': True
+                'abortable': False
             },
             {
                 'step': 'check_ipmi_users',
