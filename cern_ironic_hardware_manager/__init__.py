@@ -132,7 +132,7 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         This method in its current state will erase all block devices using
         either ATA Secure Erase or shred, depending on the system capabilities.
         """
-        # super(CernHardwareManager, self).erase_devices(node, ports)
+        super(CernHardwareManager, self).erase_devices(node, ports)
         return True
 
     def erase_devices_metadata(self, node, ports):
