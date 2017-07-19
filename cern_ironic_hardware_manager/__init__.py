@@ -142,9 +142,6 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         """Attempt to erase the disk devices metadata."""
         super(CernHardwareManager, self).erase_devices_metadata(node, ports)
 
-    def check_ipmi_users(self, node, ports):
-        return True
-
     def create_configuration(self, node, ports):
         """Create RAID configuration on the bare metal.
         This method creates the desired RAID configuration as read from
@@ -249,3 +246,28 @@ class CernHardwareManager(hardware.GenericHardwareManager):
                         raise processutils.ProcessExecutionError(err)
                 except (processutils.ProcessExecutionError, OSError) as e:
                     raise errors.CleaningError("Error erasing superblock for device {}. {}".format(device, e))
+
+    def check_ipmi_users(self, node, ports):
+        """Check users having IPMI access with admin rights
+
+        In CERN environment there should be only 2 users having admin access
+        to the IPMI interface. One of them is node.driver_info["ipmi_username"]
+        and the other is admin/root.
+
+        As the superadmin's username is not known beforehand, if we detect >2
+        users, cleaning should fail. In future we may want to implement logic
+        to automatically delete any unnecessary user from IPMI.
+        """
+
+        for channel in range(16):
+            out, e = utils.execute(
+                "ipmitool user list {0!s} | grep ADMINISTRATOR | wc -l".format(channel + 1), shell=True)
+            if int(out) > 2:
+                raise errors.CleaningError("Detected {} admin users for IPMI !".format(out))
+
+            # The following error message indicates we started querying
+            # non existing channel
+            if "Get User Access command failed" in e:
+                break
+
+        return True
