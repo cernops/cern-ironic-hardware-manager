@@ -2,6 +2,7 @@ import time
 import urllib2
 
 from ironic_python_agent import errors, hardware, utils
+from oslo_concurrency import processutils
 from oslo_log import log
 
 LOG = log.getLogger()
@@ -88,6 +89,11 @@ class CernHardwareManager(hardware.GenericHardwareManager):
                 'interface': 'management',
                 'reboot_requested': False,
                 'abortable': True
+            },
+            {
+                'step': 'delete_configuration',
+                'priority': 25,
+                'interface': 'raid'
             }
         ]
 
@@ -141,3 +147,71 @@ class CernHardwareManager(hardware.GenericHardwareManager):
 
     def check_ipmi_users(self, node, ports):
         return True
+
+    def create_configuration(self, node, ports):
+        """Create RAID configuration on the bare metal.
+        This method creates the desired RAID configuration as read from
+        node['target_raid_config'].
+        :param node: A dictionary of the node object
+        :param ports: A list of dictionaries containing information of ports
+            for the node
+        :returns: The current RAID configuration of the below format.
+            raid_config = {
+                'logical_disks': [{
+                    'size_gb': 100,
+                    'raid_level': 1,
+                    'physical_disks': [
+                        '5I:0:1',
+                        '5I:0:2'],
+                    'controller': 'Smart array controller'
+                    },
+                ]
+            }
+        """
+        raid_config = node.get('target_raid_config', {}).copy()
+
+    def delete_configuration(self, node, ports):
+        """Deletes RAID configuration on the bare metal.
+        This method deletes all the RAID disks on the bare metal.
+        :param node: A dictionary of the node object
+        :param ports: A list of dictionaries containing information of ports
+        for the node
+        """
+        raid_devices, _ = utils.execute("cat /proc/partitions | grep md | awk '{ print $4 }'", shell=True)
+
+        for device in ['/dev/'+x for x in raid_devices.split()]:
+            try:
+                component_devices, err = utils.execute("mdadm --detail {} | grep 'active sync' | awk '{{ print $7 }}'".format(device), shell=True)
+                LOG.info("Component devices for {}: {}".format(device, component_devices))
+
+                if err:
+                    raise processutils.ProcessExecutionError(err)
+            except (processutils.ProcessExecutionError, OSError) as e:
+                raise errors.CleaningError("Error getting details of RAID device {}. {}".format(device, e))
+
+            try:
+                # Positive output of the following goes into stderr, thus
+                # we don't want to check its content
+                utils.execute("mdadm --stop {}".format(device), shell=True)
+
+            except (processutils.ProcessExecutionError, OSError) as e:
+                raise errors.CleaningError("Error stopping RAID device {}. {}".format(device, e))
+
+            try:
+                utils.execute("mdadm --remove {}".format(device), shell=True)
+            except:
+                # After successful stop this returns
+                # "mdadm: error opening /dev/md3: No such file or directory"
+                # with error code 1, which we can safely ignore
+                pass
+
+            for device in component_devices.split():
+                try:
+                    # In case any of the previous failed, we won't be able to
+                    # erase superblock and the following will explode
+                    _, err = utils.execute("mdadm --zero-superblock {}".format(device), shell=True)
+
+                    if err:
+                        raise processutils.ProcessExecutionError(err)
+                except (processutils.ProcessExecutionError, OSError) as e:
+                    raise errors.CleaningError("Error erasing superblock for device {}. {}".format(device, e))
