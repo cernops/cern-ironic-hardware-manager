@@ -1,18 +1,14 @@
 import time
 import urllib2
 
-from ironic_python_agent import errors, hardware
+from ironic_python_agent import errors, hardware, utils
 from oslo_log import log
 
 LOG = log.getLogger()
 
 
 class CernHardwareManager(hardware.GenericHardwareManager):
-    # Overrides superclass's name (generic_hardware_manager).
     HARDWARE_MANAGER_NAME = 'cern_hardware_manager'
-    # This should be incremented at every upgrade to avoid making the agent
-    # change which hardware manager it uses when cleaning in the middle of a
-    # hardware manager upgrade.
     HARDWARE_MANAGER_VERSION = '1'
 
     def evaluate_hardware_support(self):
@@ -33,13 +29,11 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         :returns: HardwareSupport level for this manager.
         """
         super(CernHardwareManager, self).evaluate_hardware_support()
-        self._deregister_from_aims(
-            "http://linuxsoft.cern.ch/aims2server/aims2reboot.cgi")
-        return hardware.HardwareSupport.SERVICE_PROVIDER
 
-    def _deregister_from_aims(self, url):
-        aims_deregistration = urllib2.urlopen(url).read()
+        aims_deregistration = urllib2.urlopen("http://linuxsoft.cern.ch/aims2server/aims2reboot.cgi").read()
         LOG.info(aims_deregistration)
+
+        return hardware.HardwareSupport.SERVICE_PROVIDER
 
     def list_hardware_info(self):
         """Return full hardware inventory as a serializable dict.
@@ -52,40 +46,46 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         return super(CernHardwareManager, self).list_hardware_info()
 
     def get_clean_steps(self, node, ports):
-        """Get a list of clean steps with priority."""
-        # While obviously you could actively run code here, generally this
-        # should just return a static value, as any initialization and
-        # detection should've been done in evaluate_hardware_support().
+        """Return the clean steps supported by this hardware manager.
+
+        This method returns the clean steps that are supported by
+        proliant hardware manager.  This method is invoked on every
+        hardware manager by Ironic Python Agent to give this information
+        back to Ironic.
+
+        :param node: A dictionary of the node object
+        :param ports: A list of dictionaries containing information of ports
+            for the node
+        :returns: A list of dictionaries, each item containing the step name,
+            interface and priority for the clean step.
+        """
+
         return [
             {
                 'step': 'upgrade_example_device_model1234_firmware',
-                'priority': 37,
+                'priority': 0,
                 'interface': 'deploy',
-                # If you need Ironic to coordinate a reboot after this step
-                # runs, but before continuing cleaning, this should be true.
                 'reboot_requested': False,
-                # If it's safe for Ironic to abort cleaning while this step
-                # runs, this should be true.
                 'abortable': False
             },
-            # {
-            #     'step': 'companyx_verify_device_lifecycle',
-            #     'priority': 45,
-            #     'interface': 'deploy',
-            #     'reboot_requested': False,
-            #     'abortable': True
-            # },
             {
                 'step': 'erase_devices',
-                'priority': 98,
+                'priority': 0,
                 'interface': 'deploy',
                 'reboot_requested': False,
-                'abortable': True
+                'abortable': False
             },
             {
                 'step': 'erase_devices_metadata',
-                'priority': 99,
+                'priority': 0,
                 'interface': 'deploy',
+                'reboot_requested': False,
+                'abortable': False
+            },
+            {
+                'step': 'check_ipmi_users',
+                'priority': 0,
+                'interface': 'management',
                 'reboot_requested': False,
                 'abortable': True
             }
@@ -99,7 +99,19 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         # good practice in some environments would be to check the firmware
         # version against a constant in the code, and noop the method if an
         # upgrade is not needed.
-        if self._is_latest_firmware():
+
+        def _is_latest_firmware():
+            """Detect if device is running latest firmware."""
+            # Actually detect the firmware version instead of returning here.
+            create_date = node.get('created_at')
+            return True
+
+        def _upgrade_firmware():
+            """Upgrade firmware on device."""
+            # Actually perform firmware upgrade instead of returning here.
+            return True
+
+        if _is_latest_firmware():
             LOG.debug('Latest firmware already flashed, skipping')
             # Return values are ignored here on success
             return True
@@ -107,44 +119,25 @@ class CernHardwareManager(hardware.GenericHardwareManager):
             LOG.debug('Firmware version X found, upgrading to Y')
             # Perform firmware upgrade.
             try:
-                self._upgrade_firmware()
+                _upgrade_firmware()
             except Exception as e:
                 # Log and pass through the exception so cleaning will fail
                 LOG.exception(e)
                 raise
             return True
 
-    def _is_latest_firmware(self):
-        """Detect if device is running latest firmware."""
-        # Actually detect the firmware version instead of returning here.
-        return True
-
-    def _upgrade_firmware(self):
-        """Upgrade firmware on device."""
-        # Actually perform firmware upgrade instead of returning here.
-        return True
-
-    def companyx_verify_device_lifecycle(self, node, ports):
-        """Verify node is not beyond useful life of 3 years."""
-        # Other examples of interesting cleaning steps for this kind of hardware
-        # manager would include verifying node.properties matches current state of
-        # the node, checking smart stats to ensure the disk is not soon to fail,
-        # or enforcing security policies.
-        create_date = node.get('created_at')
-        if create_date is not None:
-            server_age = time.time() - time.mktime(time.strptime(create_date))
-            if server_age > (60 * 60 * 24 * 365 * 3):
-                raise errors.CleaningError(
-                    'Server is too old to pass cleaning!')
-            else:
-                LOG.info('Node is %s seconds old, younger than 3 years, '
-                         'cleaning passes.', server_age)
-
     def erase_devices(self, node, ports):
-        """Erase any device that holds user data."""
-        # super(CernHardwareManager, self).erase_devices(node, ports)
+        """Erase any device that holds user data.
+
+        This method in its current state will erase all block devices using
+        either ATA Secure Erase or shred, depending on the system capabilities.
+        """
+        super(CernHardwareManager, self).erase_devices(node, ports)
         return True
 
     def erase_devices_metadata(self, node, ports):
         """Attempt to erase the disk devices metadata."""
         super(CernHardwareManager, self).erase_devices_metadata(node, ports)
+
+    def check_ipmi_users(self, node, ports):
+        return True
