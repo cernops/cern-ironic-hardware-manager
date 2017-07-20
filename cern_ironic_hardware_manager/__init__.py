@@ -158,17 +158,54 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         :returns: The current RAID configuration of the below format.
             raid_config = {
                 'logical_disks': [{
-                    'size_gb': 100,
                     'raid_level': 1,
-                    'physical_disks': [
-                        '5I:0:1',
-                        '5I:0:2'],
-                    'controller': 'Smart array controller'
-                    },
+                    'size_gb': 'MAX'
+                    }
                 ]
             }
         """
-        raid_config = node.get('target_raid_config', {}).copy()
+        raid_config = node.get('target_raid_config', {})
+
+        # In case no config provided, leave the node unconfigured
+        if raid_config == {}:
+            return {}
+
+        if not self.validate_configuration(raid_config):
+            raise Exception("RAID configuration is incorrect")
+
+        local_drives, _ = utils.execute("cat /proc/partitions | grep -e sd[a-z]$ | awk '{ print $4 }'", shell=True)
+        local_drives = local_drives.split()
+
+        # Check if there are any partitions created directly on sd*. In case
+        # any is detected, abort for manual intervention
+        local_partitions, _ = utils.execute("cat /proc/partitions | grep -e sd[a-z][0-9] | awk '{ print $4 }'", shell=True)
+        if local_partitions.strip() not in ("", " "):
+            raise Exception("Partitions {} detected. Aborting".format(local_partitions.strip()))
+
+        for logical_disk in raid_config['logical_disks']:
+            # At this moment we assume there will be only one iteration here.
+
+            out, err = utils.execute("mdadm --create /dev/md0 --level={} --raid-devices={} {} --force".format(
+                logical_disk['raid_level'], len(local_drives), ' '.join(["/dev/"+elem for elem in local_drives])), shell=True)
+
+            LOG.warning("Debug create stdout: {}".format(out))
+            LOG.warning("Debug create stderr: {}".format(err))
+
+        return {'logical_disks': [{'raid_level': raid_config['logical_disks'][0]['raid_level'], 'size_gb': 'MAX'}]}
+
+    def validate_configuration(self, raid_config):
+        LOG.info("Target RAID config: {}".format(raid_config))
+
+        if len(raid_config.get('logical_disks')) != 1:
+            return False
+
+        if raid_config['logical_disks'][0]['size_gb'] != "MAX":
+            return False
+
+        if raid_config['logical_disks'][0]['raid_level'] not in ("0", "1", "10"):
+            return False
+
+        return True
 
     def delete_configuration(self, node, ports):
         """Deletes RAID configuration on the bare metal.
@@ -177,7 +214,7 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         :param ports: A list of dictionaries containing information of ports
         for the node
         """
-        raid_devices, _ = utils.execute("cat /proc/partitions | grep md | awk '{ print $4 }'", shell=True)
+        raid_devices, _ = utils.execute("cat /proc/mdstat | grep 'active raid' | awk '{ print $1 }'", shell=True)
 
         for device in ['/dev/'+x for x in raid_devices.split()]:
             try:
