@@ -65,35 +65,33 @@ class CernHardwareManager(hardware.GenericHardwareManager):
             {
                 'step': 'upgrade_example_device_model1234_firmware',
                 'priority': 0,
-                'interface': 'deploy',
-                'reboot_requested': False,
-                'abortable': False
+                'interface': 'deploy'
             },
             {
                 'step': 'erase_devices',
+                # This step is disabled as "shred" takes a lot of time ...
                 'priority': 0,
-                'interface': 'deploy',
-                'reboot_requested': False,
-                'abortable': False
+                'interface': 'deploy'
             },
             {
                 'step': 'erase_devices_metadata',
-                'priority': 0,
-                'interface': 'deploy',
-                'reboot_requested': False,
-                'abortable': False
+                'priority': 80,
+                'interface': 'deploy'
             },
             {
                 'step': 'check_ipmi_users',
                 'priority': 0,
-                'interface': 'management',
-                'reboot_requested': False,
-                'abortable': True
+                'interface': 'management'
             },
             {
                 'step': 'delete_configuration',
-                'priority': 25,
-                'interface': 'raid'
+                'priority': 21,
+                'interface': 'deploy'
+            },
+            {
+                'step': 'create_configuration',
+                'priority': 20,
+                'interface': 'deploy'
             }
         ]
 
@@ -139,7 +137,6 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         either ATA Secure Erase or shred, depending on the system capabilities.
         """
         super(CernHardwareManager, self).erase_devices(node, ports)
-        return True
 
     def erase_devices_metadata(self, node, ports):
         """Attempt to erase the disk devices metadata."""
