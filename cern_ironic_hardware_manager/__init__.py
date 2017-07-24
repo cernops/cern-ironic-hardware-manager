@@ -2,6 +2,7 @@ import time
 import urllib2
 
 from ironic_python_agent import errors, hardware, utils
+from oslo_concurrency import processutils
 from oslo_log import log
 
 LOG = log.getLogger()
@@ -64,30 +65,33 @@ class CernHardwareManager(hardware.GenericHardwareManager):
             {
                 'step': 'upgrade_example_device_model1234_firmware',
                 'priority': 0,
-                'interface': 'deploy',
-                'reboot_requested': False,
-                'abortable': False
+                'interface': 'deploy'
             },
             {
                 'step': 'erase_devices',
+                # This step is disabled as "shred" takes a lot of time ...
                 'priority': 0,
-                'interface': 'deploy',
-                'reboot_requested': False,
-                'abortable': False
+                'interface': 'deploy'
             },
             {
                 'step': 'erase_devices_metadata',
-                'priority': 0,
-                'interface': 'deploy',
-                'reboot_requested': False,
-                'abortable': False
+                'priority': 80,
+                'interface': 'deploy'
             },
             {
                 'step': 'check_ipmi_users',
                 'priority': 0,
-                'interface': 'management',
-                'reboot_requested': False,
-                'abortable': True
+                'interface': 'management'
+            },
+            {
+                'step': 'delete_configuration',
+                'priority': 21,
+                'interface': 'deploy'
+            },
+            {
+                'step': 'create_configuration',
+                'priority': 20,
+                'interface': 'deploy'
             }
         ]
 
@@ -133,7 +137,6 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         either ATA Secure Erase or shred, depending on the system capabilities.
         """
         super(CernHardwareManager, self).erase_devices(node, ports)
-        return True
 
     def erase_devices_metadata(self, node, ports):
         """Attempt to erase the disk devices metadata."""
@@ -141,3 +144,108 @@ class CernHardwareManager(hardware.GenericHardwareManager):
 
     def check_ipmi_users(self, node, ports):
         return True
+
+    def create_configuration(self, node, ports):
+        """Create RAID configuration on the bare metal.
+        This method creates the desired RAID configuration as read from
+        node['target_raid_config'].
+        :param node: A dictionary of the node object
+        :param ports: A list of dictionaries containing information of ports
+            for the node
+        :returns: The current RAID configuration of the below format.
+            raid_config = {
+                'logical_disks': [{
+                    'raid_level': 1,
+                    'size_gb': 'MAX'
+                    }
+                ]
+            }
+        """
+        raid_config = node.get('target_raid_config', {})
+
+        # In case no config provided, leave the node unconfigured
+        if raid_config == {}:
+            return {}
+
+        if not self.validate_configuration(raid_config):
+            raise Exception("RAID configuration is incorrect")
+
+        local_drives, _ = utils.execute("cat /proc/partitions | grep -e sd[a-z]$ | awk '{ print $4 }'", shell=True)
+        local_drives = local_drives.split()
+
+        # Check if there are any partitions created directly on sd*. In case
+        # any is detected, abort for manual intervention
+        local_partitions, _ = utils.execute("cat /proc/partitions | grep -e sd[a-z][0-9] | awk '{ print $4 }'", shell=True)
+        if local_partitions.strip() not in ("", " "):
+            raise Exception("Partitions {} detected. Aborting".format(local_partitions.strip()))
+
+        for logical_disk in raid_config['logical_disks']:
+            # At this moment we assume there will be only one iteration here.
+
+            out, err = utils.execute("mdadm --create /dev/md0 --level={} --raid-devices={} {} --force".format(
+                logical_disk['raid_level'], len(local_drives), ' '.join(["/dev/"+elem for elem in local_drives])), shell=True)
+
+            LOG.warning("Debug create stdout: {}".format(out))
+            LOG.warning("Debug create stderr: {}".format(err))
+
+        return {'logical_disks': [{'raid_level': raid_config['logical_disks'][0]['raid_level'], 'size_gb': 'MAX'}]}
+
+    def validate_configuration(self, raid_config):
+        LOG.info("Target RAID config: {}".format(raid_config))
+
+        if len(raid_config.get('logical_disks')) != 1:
+            return False
+
+        if raid_config['logical_disks'][0]['size_gb'] != "MAX":
+            return False
+
+        if raid_config['logical_disks'][0]['raid_level'] not in ("0", "1", "10"):
+            return False
+
+        return True
+
+    def delete_configuration(self, node, ports):
+        """Deletes RAID configuration on the bare metal.
+        This method deletes all the RAID disks on the bare metal.
+        :param node: A dictionary of the node object
+        :param ports: A list of dictionaries containing information of ports
+        for the node
+        """
+        raid_devices, _ = utils.execute("cat /proc/mdstat | grep 'active raid' | awk '{ print $1 }'", shell=True)
+
+        for device in ['/dev/'+x for x in raid_devices.split()]:
+            try:
+                component_devices, err = utils.execute("mdadm --detail {} | grep 'active sync' | awk '{{ print $7 }}'".format(device), shell=True)
+                LOG.info("Component devices for {}: {}".format(device, component_devices))
+
+                if err:
+                    raise processutils.ProcessExecutionError(err)
+            except (processutils.ProcessExecutionError, OSError) as e:
+                raise errors.CleaningError("Error getting details of RAID device {}. {}".format(device, e))
+
+            try:
+                # Positive output of the following goes into stderr, thus
+                # we don't want to check its content
+                utils.execute("mdadm --stop {}".format(device), shell=True)
+
+            except (processutils.ProcessExecutionError, OSError) as e:
+                raise errors.CleaningError("Error stopping RAID device {}. {}".format(device, e))
+
+            try:
+                utils.execute("mdadm --remove {}".format(device), shell=True)
+            except:
+                # After successful stop this returns
+                # "mdadm: error opening /dev/md3: No such file or directory"
+                # with error code 1, which we can safely ignore
+                pass
+
+            for device in component_devices.split():
+                try:
+                    # In case any of the previous failed, we won't be able to
+                    # erase superblock and the following will explode
+                    _, err = utils.execute("mdadm --zero-superblock {}".format(device), shell=True)
+
+                    if err:
+                        raise processutils.ProcessExecutionError(err)
+                except (processutils.ProcessExecutionError, OSError) as e:
+                    raise errors.CleaningError("Error erasing superblock for device {}. {}".format(device, e))
