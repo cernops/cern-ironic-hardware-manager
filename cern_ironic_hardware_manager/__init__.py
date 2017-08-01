@@ -80,8 +80,8 @@ class CernHardwareManager(hardware.GenericHardwareManager):
             },
             {
                 'step': 'check_ipmi_users',
-                'priority': 0,
-                'interface': 'management'
+                'priority': 1,
+                'interface': 'deploy'
             },
             {
                 'step': 'delete_configuration',
