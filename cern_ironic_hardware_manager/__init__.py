@@ -260,10 +260,18 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         """
 
         for channel in range(16):
+            # Count number of enabled admin users
             out, e = utils.execute(
-                "ipmitool user list {0!s} | grep ADMINISTRATOR | wc -l".format(channel + 1), shell=True)
-            if int(out) > 2:
+                "ipmitool user list {0!s} | awk '{{if ($3 == \"true\" && $6 == \"ADMINISTRATOR\") print $0;}}' | wc -l".format(channel + 1), shell=True)
+            if int(out) != 1:
                 raise errors.CleaningError("Detected {} admin users for IPMI !".format(out))
+
+            # In case there is only 1 ipmi user, check if name matches the one
+            # known by Ironic
+            out, e = utils.execute(
+                "ipmitool user list {0!s} | awk '{{if ($3 == \"true\" && $6 == \"ADMINISTRATOR\") print $2;}}' | wc -l".format(channel + 1), shell=True)
+            if out != node.get('driver_info')['ipmi_username']:
+                raise errors.CleaningError("Detected illegal admin user \"{}\" for IPMI !".format(out))
 
             # The following error message indicates we started querying
             # non existing channel
