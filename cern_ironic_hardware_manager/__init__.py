@@ -277,5 +277,3 @@ class CernHardwareManager(hardware.GenericHardwareManager):
             # non existing channel
             if "Get User Access command failed" in e:
                 break
-
-        return True
