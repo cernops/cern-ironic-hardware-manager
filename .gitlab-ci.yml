@@ -1,0 +1,12 @@
+stages:
+  - test
+
+flake8:
+  stage: test
+  image: docker.io/python:2.7
+  except:
+    - tags
+  script:
+    - cd $CI_PROJECT_DIR
+    - pip install flake8
+    - bash flake8wrap.sh -HEAD
