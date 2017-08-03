@@ -49,8 +49,6 @@ class CernHardwareManager(hardware.GenericHardwareManager):
 
         return hardware_info
 
-    def get_disk_enclosures(self):
-        return 0
 
     def get_clean_steps(self, node, ports):
         """Return the clean steps supported by this hardware manager.
@@ -283,3 +281,7 @@ class CernHardwareManager(hardware.GenericHardwareManager):
             # non existing channel
             if "Get User Access command failed" in e:
                 break
+
+    def get_disk_enclosures(self):
+        out, e = utils.execute("lsscsi | grep enclosu | wc -l", shell=True)
+        return int(out)
