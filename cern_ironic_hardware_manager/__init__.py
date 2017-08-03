@@ -44,7 +44,13 @@ class CernHardwareManager(hardware.GenericHardwareManager):
 
         :return: a dictionary representing inventory
         """
-        return super(CernHardwareManager, self).list_hardware_info()
+        hardware_info = super(CernHardwareManager, self).list_hardware_info()
+        hardware_info['disk_enclosures'] = self.get_disk_enclosures()
+
+        return hardware_info
+
+    def get_disk_enclosures(self):
+        return 0
 
     def get_clean_steps(self, node, ports):
         """Return the clean steps supported by this hardware manager.
