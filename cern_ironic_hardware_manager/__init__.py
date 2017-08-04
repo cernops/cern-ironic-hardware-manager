@@ -242,10 +242,11 @@ class CernHardwareManager(hardware.GenericHardwareManager):
 
             for device in component_devices.split():
                 try:
-                    # In case any of the previous failed, we won't be able to
-                    # erase superblock and the following will explode
-                    _, err = utils.execute("mdadm --zero-superblock {}".format(device), shell=True)
+                    _, err = utils.execute("mdadm --E {}".format(device), shell=True)
+                    if "No md superblock detected" in err:
+                        continue
 
+                    _, err = utils.execute("mdadm --zero-superblock {}".format(device), shell=True)
                     if err:
                         raise processutils.ProcessExecutionError(err)
                 except (processutils.ProcessExecutionError, OSError) as e:
