@@ -84,7 +84,7 @@ class CernHardwareManager(hardware.GenericHardwareManager):
             },
             {
                 'step': 'check_ipmi_users',
-                'priority': 1,
+                'priority': 0,
                 'interface': 'deploy'
             },
             {
