@@ -1,4 +1,3 @@
-import time
 import urllib2
 
 from ironic_python_agent import errors, hardware, utils
@@ -42,13 +41,12 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         This inventory is sent to Ironic on lookup and to Inspector on
         inspection.
 
-        :return: a dictionary representing inventory
+        :returns: A dictionary representing inventory
         """
         hardware_info = super(CernHardwareManager, self).list_hardware_info()
         hardware_info['disk_enclosures'] = self.get_disk_enclosures()
 
         return hardware_info
-
 
     def get_clean_steps(self, node, ports):
         """Return the clean steps supported by this hardware manager.
@@ -60,11 +58,10 @@ class CernHardwareManager(hardware.GenericHardwareManager):
 
         :param node: A dictionary of the node object
         :param ports: A list of dictionaries containing information of ports
-            for the node
+                      for the node
         :returns: A list of dictionaries, each item containing the step name,
-            interface and priority for the clean step.
+                  interface and priority for the clean step.
         """
-
         return [
             {
                 'step': 'upgrade_example_device_model1234_firmware',
@@ -111,7 +108,7 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         def _is_latest_firmware():
             """Detect if device is running latest firmware."""
             # Actually detect the firmware version instead of returning here.
-            create_date = node.get('created_at')
+            node.get('created_at')
             return True
 
         def _upgrade_firmware():
@@ -148,19 +145,21 @@ class CernHardwareManager(hardware.GenericHardwareManager):
 
     def create_configuration(self, node, ports):
         """Create RAID configuration on the bare metal.
+
         This method creates the desired RAID configuration as read from
         node['target_raid_config'].
+
         :param node: A dictionary of the node object
         :param ports: A list of dictionaries containing information of ports
-            for the node
+                      for the node
         :returns: The current RAID configuration of the below format.
-            raid_config = {
-                'logical_disks': [{
-                    'raid_level': 1,
-                    'size_gb': 'MAX'
-                    }
-                ]
-            }
+                  raid_config = {
+                    'logical_disks': [{
+                      'raid_level': 1,
+                      'size_gb': 'MAX'
+                      }
+                    ]
+                  }
         """
         raid_config = node.get('target_raid_config', {})
 
@@ -178,18 +177,23 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         # any is detected, abort for manual intervention
         local_partitions, _ = utils.execute("cat /proc/partitions | grep -e sd[a-z][0-9] | awk '{ print $4 }'", shell=True)
         if local_partitions.strip() not in ("", " "):
-            raise Exception("Partitions {} detected. Aborting".format(local_partitions.strip()))
+            raise Exception("Partitions {} detected. Aborting".format(
+                local_partitions.strip()))
 
         for logical_disk in raid_config['logical_disks']:
             # At this moment we assume there will be only one iteration here.
 
             out, err = utils.execute("mdadm --create /dev/md0 --level={} --raid-devices={} {} --force".format(
-                logical_disk['raid_level'], len(local_drives), ' '.join(["/dev/"+elem for elem in local_drives])), shell=True)
+                logical_disk['raid_level'], len(local_drives), ' '.join(
+                    ["/dev/" + elem for elem in local_drives])), shell=True)
 
             LOG.warning("Debug create stdout: {}".format(out))
             LOG.warning("Debug create stderr: {}".format(err))
 
-        return {'logical_disks': [{'raid_level': raid_config['logical_disks'][0]['raid_level'], 'size_gb': 'MAX'}]}
+        return {'logical_disks':
+                [{'raid_level': raid_config['logical_disks'][0]['raid_level'],
+                  'size_gb': 'MAX'}]
+                }
 
     def validate_configuration(self, raid_config):
         LOG.info("Target RAID config: {}".format(raid_config))
@@ -200,21 +204,24 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         if raid_config['logical_disks'][0]['size_gb'] != "MAX":
             return False
 
-        if raid_config['logical_disks'][0]['raid_level'] not in ("0", "1", "10"):
+        accepted_levels = ["0", "1", "10"]
+        if raid_config['logical_disks'][0]['raid_level'] not in accepted_levels:
             return False
 
         return True
 
     def delete_configuration(self, node, ports):
         """Deletes RAID configuration on the bare metal.
+
         This method deletes all the RAID disks on the bare metal.
+
         :param node: A dictionary of the node object
         :param ports: A list of dictionaries containing information of ports
-        for the node
+                      for the node
         """
         raid_devices, _ = utils.execute("cat /proc/mdstat | grep 'active raid' | awk '{ print $1 }'", shell=True)
 
-        for device in ['/dev/'+x for x in raid_devices.split()]:
+        for device in ['/dev/' + x for x in raid_devices.split()]:
             try:
                 component_devices, err = utils.execute("mdadm --detail {} | grep 'active sync' | awk '{{ print $7 }}'".format(device), shell=True)
                 LOG.info("Component devices for {}: {}".format(device, component_devices))
@@ -263,7 +270,6 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         users, cleaning should fail. In future we may want to implement logic
         to automatically delete any unnecessary user from IPMI.
         """
-
         for channel in range(16):
             # Count number of enabled admin users
             out, e = utils.execute(
@@ -284,5 +290,18 @@ class CernHardwareManager(hardware.GenericHardwareManager):
                 break
 
     def get_disk_enclosures(self):
+        """Detect number of external drive enclosures
+
+        Used by list_hardware_info to populate node's properties with a number
+        of external arrays connected to the device. Please note this assumes
+        all the drivers required to detect the array have been loaded
+        beforehand.
+
+        :returns: A number of external arrays
+        """
+        # TODO(makowals): Check if the drivers are loaded before doing lsscsi;
+        # we should compile a list of potentials modules we want to have
+        # and then use utils.try_execute('modprobe', 'xyz')
+
         out, e = utils.execute("lsscsi | grep enclosu | wc -l", shell=True)
         return int(out)
