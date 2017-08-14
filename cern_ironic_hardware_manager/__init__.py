@@ -249,7 +249,7 @@ class CernHardwareManager(hardware.GenericHardwareManager):
 
             for device in component_devices.split():
                 try:
-                    _, err = utils.execute("mdadm --E {}".format(device), shell=True)
+                    _, err = utils.execute("mdadm --examine {}".format(device), shell=True)
                     if "No md superblock detected" in err:
                         continue
 
