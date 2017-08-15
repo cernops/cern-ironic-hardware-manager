@@ -2,6 +2,8 @@ import os
 import urllib2
 import socket
 import time
+import pyudev
+import shlex
 
 from ironic_python_agent import errors, hardware, utils
 from oslo_concurrency import processutils
@@ -31,6 +33,8 @@ class CernHardwareManager(hardware.GenericHardwareManager):
 
         :returns: HardwareSupport level for this manager.
         """
+        LOG.info("evaluate_hardware_support ()")
+
         super(CernHardwareManager, self).evaluate_hardware_support()
 
         # Get IPv4 address of linuxsoft in order to send AIMS deregistration
@@ -105,36 +109,41 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         """
         return [
             {
-                'step': 'upgrade_example_device_model1234_firmware',
-                'priority': 0,
-                'interface': 'deploy'
-            },
-            {
-                'step': 'erase_devices',
-                # This step is disabled as "shred" takes a lot of time ...
-                'priority': 0,
+                'step': 'delete_configuration',
+                'priority': 30,
                 'interface': 'deploy'
             },
             {
                 'step': 'erase_devices_metadata',
-                'priority': 80,
-                'interface': 'deploy'
-            },
-            {
-                'step': 'check_ipmi_users',
-                'priority': 0,
-                'interface': 'deploy'
-            },
-            {
-                'step': 'delete_configuration',
-                'priority': 21,
+                # NOTE(arne): Needs lower priority than delete_configuration
+                # so that a RAID can be stopped and cleaned before the RAID
+                # metadata is wiped of the the RAID members.
+                'priority': 20,
                 'interface': 'deploy'
             },
             {
                 'step': 'create_configuration',
-                'priority': 20,
+                'priority': 10,
                 'interface': 'deploy'
-            }
+            },
+            {
+                'step': 'wait_a_minute',
+                'priority': 1,
+                'interface': 'deploy'
+            },
+            {
+                'step': 'erase_devices',
+                # NOTE(arne): Disabled for now: "shred" takes too long.
+                'priority': 0,
+                'interface': 'deploy'
+            },
+            {
+                'step': 'check_ipmi_users',
+                # NOTE(arne): Disabled for now: needs discussion and sync
+                # with procurement team.
+                'priority': 0,
+                'interface': 'deploy'
+            },
         ]
 
     def upgrade_example_device_model1234_firmware(self, node, ports):
@@ -221,15 +230,27 @@ class CernHardwareManager(hardware.GenericHardwareManager):
             raise Exception("Partitions {} detected. Aborting".format(
                 local_partitions.strip()))
 
+        # Create two partitions on each local drive:
+        #   - p1 for the image (in particular /boot and /)
+        #   - p2 for the desired RAID configuration
+        LOG.info("create partitions")
+        for local_drive in local_drives:
+            utils.execute("parted /dev/{} -s -- mklabel msdos".format(local_drive), shell=True)
+            utils.execute("parted /dev/{} -s -a optimal -- mkpart primary 2048s 16384".format(local_drive), shell=True)
+            utils.execute("parted /dev/{} -s -a optimal -- mkpart primary 16384 -1".format(local_drive), shell=True)
+
+        # Create the RAID-1 for the image
+        LOG.info("create RAID-1")
+        out, err = utils.execute("mdadm --create /dev/md0 --level=1 --raid-devices={} {} --force --metadata=1.0".format(
+            len(local_drives), ' '.join(
+                ["/dev/" + elem + "1" for elem in local_drives])), shell=True)
+
+        # Create the RAID-X according to the desired configuration
+        LOG.info("create RAID-X")
         for logical_disk in raid_config['logical_disks']:
-            # At this moment we assume there will be only one iteration here.
-
-            out, err = utils.execute("mdadm --create /dev/md0 --level={} --raid-devices={} {} --force".format(
+            out, err = utils.execute("mdadm --create /dev/md1 --level={} --raid-devices={} {} --force --metadata=1.0".format(
                 logical_disk['raid_level'], len(local_drives), ' '.join(
-                    ["/dev/" + elem for elem in local_drives])), shell=True)
-
-            LOG.warning("Debug create stdout: {}".format(out))
-            LOG.warning("Debug create stderr: {}".format(err))
+                    ["/dev/" + elem + "2" for elem in local_drives])), shell=True)
 
         return {'logical_disks':
                 [{'raid_level': raid_config['logical_disks'][0]['raid_level'],
@@ -245,7 +266,8 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         if raid_config['logical_disks'][0]['size_gb'] != "MAX":
             return False
 
-        accepted_levels = ["0", "1", "10"]
+        # accepted_levels = ["0", "1", "10"]
+        accepted_levels = ["0", "1"]
         if raid_config['logical_disks'][0]['raid_level'] not in accepted_levels:
             return False
 
@@ -260,9 +282,12 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         :param ports: A list of dictionaries containing information of ports
                       for the node
         """
-        raid_devices, _ = utils.execute("cat /proc/mdstat | grep 'active raid' | awk '{ print $1 }'", shell=True)
+        LOG.info("Deleting RAID configurations")
+
+        raid_devices, _ = utils.execute("cat /proc/mdstat | grep 'active' | awk '{ print $1 }'", shell=True)
 
         for device in ['/dev/' + x for x in raid_devices.split()]:
+            LOG.info("Deleting RAID configuration for device {}".format(device))
             try:
                 component_devices, err = utils.execute("mdadm --detail {} | grep 'active sync' | awk '{{ print $7 }}'".format(device), shell=True)
                 LOG.info("Component devices for {}: {}".format(device, component_devices))
@@ -272,33 +297,56 @@ class CernHardwareManager(hardware.GenericHardwareManager):
             except (processutils.ProcessExecutionError, OSError) as e:
                 raise errors.CleaningError("Error getting details of RAID device {}. {}".format(device, e))
 
+            # Wipe partition tables from the RAID device. Needed before
+            # creating a new md device.
             try:
-                # Positive output of the following goes into stderr, thus
-                # we don't want to check its content
-                utils.execute("mdadm --stop {}".format(device), shell=True)
+                LOG.info("Wiping device {}".format(device))
+                utils.execute("wipefs -af {}".format(device), shell=True)
+            except (processutils.ProcessExecutionError, OSError) as e:
+                raise errors.CleaningError("Error wiping RAID device {}. {}".format(device, e))
 
+            try:
+                LOG.info("Stopping device {}".format(device))
+                utils.execute("mdadm --stop {}".format(device), shell=True)
             except (processutils.ProcessExecutionError, OSError) as e:
                 raise errors.CleaningError("Error stopping RAID device {}. {}".format(device, e))
 
             try:
+                LOG.info("Removing device {}".format(device))
                 utils.execute("mdadm --remove {}".format(device), shell=True)
             except processutils.ProcessExecutionError:
                 # After successful stop this returns
                 # "mdadm: error opening /dev/md3: No such file or directory"
                 # with error code 1, which we can safely ignore
                 pass
+            LOG.info("Removed RAID device {}".format(device))
 
-            for device in component_devices.split():
+            for component_device in component_devices.split():
                 try:
-                    _, err = utils.execute("mdadm --examine {}".format(device), shell=True)
+                    _, err = utils.execute("mdadm --examine {}".format(component_device), shell=True)
                     if "No md superblock detected" in err:
                         continue
 
-                    _, err = utils.execute("mdadm --zero-superblock {}".format(device), shell=True)
+                    _, err = utils.execute("mdadm --zero-superblock {}".format(component_device), shell=True)
                     if err:
                         raise processutils.ProcessExecutionError(err)
                 except (processutils.ProcessExecutionError, OSError) as e:
-                    raise errors.CleaningError("Error erasing superblock for device {}. {}".format(device, e))
+                    raise errors.CleaningError("Error erasing superblock for device {}. {}".format(component_device, e))
+                LOG.info("Deleted md superblock on {}".format(component_device))
+
+            LOG.info("Removed RAID configuration of {}".format(device))
+
+        LOG.info("Finished deleting RAID configurations")
+
+    def wait_a_minute(self, node, ports):
+        """Holds the IPA for a minute after automatic cleaning to inspect logs.
+
+        :param node: A dictionary of the node object
+        :param ports: A list of dictionaries containing information of ports
+                      for the node
+        """
+        LOG.warning("Waiting 60 seconds for log inspection ....")
+        time.sleep(60)
 
     def check_ipmi_users(self, node, ports):
         """Check users having IPMI access with admin rights
@@ -372,3 +420,132 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         result = {k: v.strip() for k, v in result.items()}
 
         return result['cpu_name'], result['cpu_family'], result['cpu_model'], result['cpu_stepping']
+
+    def list_block_devices(self):
+        return list_all_block_devices()
+
+
+def list_all_block_devices(block_type='disk',
+                           ignore_raid=False):
+    """List all physical block devices
+
+    The switches we use for lsblk: P for KEY="value" output, b for size output
+    in bytes, i to ensure ascii characters only, and o to specify the
+    fields/columns we need.
+
+    Broken out as its own function to facilitate custom hardware managers that
+    don't need to subclass GenericHardwareManager.
+
+    :param block_type: Type of block device to find
+    :param ignore_raid: Ignore auto-identified raid devices, example: md0
+                        Defaults to false as these are generally disk
+                        devices and should be treated as such if encountered.
+    :return: A list of BlockDevices
+    """
+    hardware._udev_settle()
+
+    # map device names to /dev/disk/by-path symbolic links that points to it
+
+    by_path_mapping = {}
+
+    disk_by_path_dir = '/dev/disk/by-path'
+
+    try:
+        paths = os.listdir(disk_by_path_dir)
+
+        for path in paths:
+            path = os.path.join(disk_by_path_dir, path)
+            # Turn possibly relative symbolic link into absolute
+            devname = os.path.join(disk_by_path_dir, os.readlink(path))
+            devname = os.path.abspath(devname)
+            by_path_mapping[devname] = path
+
+    except OSError as e:
+        # NOTE(TheJulia): This is for multipath detection, and will raise
+        # some warning logs with unrelated tests.
+        LOG.warning("Path %(path)s is inaccessible, /dev/disk/by-path/* "
+                    "version of block device name is unavailable "
+                    "Cause: %(error)s", {'path': disk_by_path_dir, 'error': e})
+
+    columns = ['KNAME', 'MODEL', 'SIZE', 'ROTA', 'TYPE']
+    report = utils.execute('lsblk', '-Pbi', '-o{}'.format(','.join(columns)),
+                           check_exit_code=[0])[0]
+    # lines = report.split('\n')
+    lines = report.splitlines()
+    lines = list(set(lines))
+    context = pyudev.Context()
+
+    LOG.debug("list_block_devices(): found {}".format(lines))
+
+    devices = []
+    for line in lines:
+        device = {}
+        # Split into KEY=VAL pairs
+        vals = shlex.split(line)
+        for key, val in (v.split('=', 1) for v in vals):
+            device[key] = val.strip()
+        # Ignore block types not specified
+        devtype = device.get('TYPE')
+        # Search for raid in the reply type, as RAID is a
+        # disk device, and we should honor it if is present.
+        # Other possible type values, which we skip recording:
+        #   lvm, part, rom, loop
+        if devtype != block_type:
+            if devtype is not None and 'raid' in devtype and not ignore_raid:
+                LOG.info(
+                    "TYPE detected to contain 'raid', signifying a RAID "
+                    "volume. Found: {!r}".format(line))
+            else:
+                LOG.info(
+                    "TYPE did not match. Wanted: {!r} but found: {!r}".format(
+                        block_type, line))
+                continue
+
+        # Ensure all required columns are at least present, even if blank
+        missing = set(columns) - set(device)
+        if missing:
+            raise errors.BlockDeviceError(
+                '%s must be returned by lsblk.' % ', '.join(sorted(missing)))
+
+        name = os.path.join('/dev', device['KNAME'])
+
+        try:
+            udev = pyudev.Device.from_device_file(context, name)
+        # pyudev started raising another error in 0.18
+        except (ValueError, EnvironmentError, pyudev.DeviceNotFoundError) as e:
+            LOG.warning("Device %(dev)s is inaccessible, skipping... "
+                        "Error: %(error)s", {'dev': name, 'error': e})
+            extra = {}
+        else:
+            # TODO(lucasagomes): Since lsblk only supports
+            # returning the short serial we are using
+            # ID_SERIAL_SHORT here to keep compatibility with the
+            # bash deploy ramdisk
+            extra = {key: udev.get('ID_%s' % udev_key) for key, udev_key in
+                     [('wwn', 'WWN'), ('serial', 'SERIAL_SHORT'),
+                      ('wwn_with_extension', 'WWN_WITH_EXTENSION'),
+                      ('wwn_vendor_extension', 'WWN_VENDOR_EXTENSION')]}
+
+        # NOTE(lucasagomes): Newer versions of the lsblk tool supports
+        # HCTL as a parameter but let's get it from sysfs to avoid breaking
+        # old distros.
+        try:
+            extra['hctl'] = os.listdir(
+                '/sys/block/%s/device/scsi_device' % device['KNAME'])[0]
+        except (OSError, IndexError):
+            LOG.warning('Could not find the SCSI address (HCTL) for '
+                        'device %s. Skipping', name)
+
+        # Not all /dev entries are pointed to from /dev/disk/by-path
+        by_path_name = by_path_mapping.get(name)
+
+        devices.append(hardware.BlockDevice(name=name,
+                                            model=device['MODEL'],
+                                            size=int(device['SIZE']),
+                                            rotational=bool(int(device['ROTA'])),
+                                            vendor=hardware._get_device_info(device['KNAME'],
+                                                                             'block', 'vendor'),
+                                            by_path=by_path_name,
+                                            **extra))
+
+    return devices
