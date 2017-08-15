@@ -300,6 +300,9 @@ class CernHardwareManager(hardware.GenericHardwareManager):
                 except (processutils.ProcessExecutionError, OSError) as e:
                     raise errors.CleaningError("Error erasing superblock for device {}. {}".format(device, e))
 
+    def get_os_install_device(self):
+        return "/dev/md127"
+
     def check_ipmi_users(self, node, ports):
         """Check users having IPMI access with admin rights
 
