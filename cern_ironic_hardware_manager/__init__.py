@@ -103,6 +103,10 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         :returns: A list of dictionaries, each item containing the step name,
                   interface and priority for the clean step.
         """
+        # Store the node object in the hardware module to facilitate the access
+        # to the node properties
+        hardware.cache_node(node)
+
         return [
             {
                 'step': 'upgrade_example_device_model1234_firmware',
@@ -312,7 +316,10 @@ class CernHardwareManager(hardware.GenericHardwareManager):
                     raise errors.CleaningError("Error erasing superblock for device {}. {}".format(device, e))
 
     def get_os_install_device(self):
-        return "/dev/md127"
+        node = hardware.get_cached_node()
+        if node.get('target_raid_config', {}) != {}:
+            return "/dev/md127"
+        return super(CernHardwareManager, self).get_os_install_device()
 
     def check_ipmi_users(self, node, ports):
         """Check users having IPMI access with admin rights
