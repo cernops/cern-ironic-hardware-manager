@@ -1,4 +1,5 @@
 import urllib2
+import socket
 
 from ironic_python_agent import errors, hardware, utils
 from oslo_concurrency import processutils
@@ -30,7 +31,11 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         """
         super(CernHardwareManager, self).evaluate_hardware_support()
 
-        aims_deregistration = urllib2.urlopen("http://linuxsoft.cern.ch/aims2server/aims2reboot.cgi").read()
+        # Get IPv4 address of linuxsoft in order to send AIMS deregistration
+        # request using IPv4, not IPv6 (as the support of the latter is broken
+        # in CERN network infra)
+        host = socket.gethostbyname('linuxsoft.cern.ch')
+        aims_deregistration = urllib2.urlopen("http://{}/aims2server/aims2reboot.cgi".format(host)).read()
         LOG.info(aims_deregistration)
 
         return hardware.HardwareSupport.SERVICE_PROVIDER
