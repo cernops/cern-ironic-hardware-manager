@@ -1,5 +1,6 @@
 import urllib2
 import socket
+import time
 
 from ironic_python_agent import errors, hardware, utils
 from oslo_concurrency import processutils
@@ -34,9 +35,26 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         # Get IPv4 address of linuxsoft in order to send AIMS deregistration
         # request using IPv4, not IPv6 (as the support of the latter is broken
         # in CERN network infra)
+
+        # As AIMS server checks revDNS of the caller, we need to wait here
+        # in case we had an user who requested cern-services=False.
+        # Otherwise AIMS fails to deregister and we have an endless loop to
+        # boot into deploy image
+
         host = socket.gethostbyname('linuxsoft.cern.ch')
-        aims_deregistration = urllib2.urlopen("http://{}/aims2server/aims2reboot.cgi".format(host)).read()
-        LOG.info(aims_deregistration)
+        aims_url = "http://{}/aims2server/aims2reboot.cgi".format(host)
+
+        for attempt in range(0, 12):
+            aims_deregistration = urllib2.urlopen(aims_url).read()
+            if "is not registered with aims2" in aims_deregistration:
+                LOG.warning(aims_deregistration)
+                time.sleep(60)
+                continue
+            else:
+                LOG.info(aims_deregistration)
+                break
+        else:
+            raise Exception("AIMS deregistration timed out")
 
         return hardware.HardwareSupport.SERVICE_PROVIDER
 
