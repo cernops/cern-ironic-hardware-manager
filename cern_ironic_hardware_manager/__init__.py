@@ -46,13 +46,19 @@ class CernHardwareManager(hardware.GenericHardwareManager):
 
         for attempt in range(0, 12):
             aims_deregistration = urllib2.urlopen(aims_url).read()
-            if "is not registered with aims2" in aims_deregistration:
+            if "installed by AIMS2 at" in aims_deregistration:
+                # All good, machine deregistered
+                LOG.info(aims_deregistration)
+                break
+            elif "is not registered with aims2" in aims_deregistration:
+                # revDNS not recognized by AIMS, please wait and retry
                 LOG.warning(aims_deregistration)
                 time.sleep(60)
                 continue
             else:
-                LOG.info(aims_deregistration)
-                break
+                # Something unexpected happened
+                LOG.error(aims_deregistration)
+                raise Exception("AIMS deregistration failed")
         else:
             raise Exception("AIMS deregistration timed out")
 
