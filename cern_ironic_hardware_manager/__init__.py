@@ -1,3 +1,4 @@
+import os
 import urllib2
 import socket
 import time
@@ -35,6 +36,9 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         # Get IPv4 address of linuxsoft in order to send AIMS deregistration
         # request using IPv4, not IPv6 (as the support of the latter is broken
         # in CERN network infra)
+
+        os.system("sysctl -w net.ipv6.conf.all.disable_ipv6=1")
+        os.system("sysctl -w net.ipv6.conf.default.disable_ipv6=1")
 
         # As AIMS server checks revDNS of the caller, we need to wait here
         # in case we had an user who requested cern-services=False.
