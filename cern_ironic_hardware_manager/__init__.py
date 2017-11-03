@@ -225,11 +225,12 @@ class CernHardwareManager(hardware.GenericHardwareManager):
             raise Exception("Partitions {} detected. Aborting".format(
                 local_partitions.strip()))
 
-        # We want to label each physical drive as GPT and create exactly one
-        # partition which type will be BIOS boot
+        # We want to label each physical drive as GPT and create two partitions
+        # where the first one will be BIOS BOOT and the second one standard
+        # for user data
         for device in local_drives:
             try:
-                out, err = utils.execute("parted /dev/{} --script mklabel gpt mkpart primary 0% 100% set 1 bios_grub on".format(device), shell=True)
+                out, err = utils.execute("parted /dev/{} --script mklabel gpt mkpart primary ext4 0% 200 mkpart primary ext4 200 100% set 1 bios_grub on".format(device), shell=True)
                 if err:
                     raise processutils.ProcessExecutionError(err)
             except (processutils.ProcessExecutionError, OSError) as e:
@@ -237,14 +238,21 @@ class CernHardwareManager(hardware.GenericHardwareManager):
 
         for logical_disk in raid_config['logical_disks']:
             # We create RAID array from each partition (not physical device !)
-            # At this moment we assume there will be only one iteration here.
+            # At this moment we assume there will be exactly two iterations.
             # Metadata v1.0 is required as we want to put superblock at the end
             out, err = utils.execute("mdadm --create /dev/md0 --level={} --raid-devices={} {} --force --metadata=1.0".format(
                 logical_disk['raid_level'], len(local_drives), ' '.join(
                     ["/dev/" + elem + "1" for elem in local_drives])), shell=True)
 
-            LOG.warning("Debug create stdout: {}".format(out))
-            LOG.warning("Debug create stderr: {}".format(err))
+            LOG.warning("Debug create /dev/md0 stdout: {}".format(out))
+            LOG.warning("Debug create /dev/md0 stderr: {}".format(err))
+
+            out, err = utils.execute("mdadm --create /dev/md1 --level={} --raid-devices={} {} --force --metadata=1.0".format(
+                logical_disk['raid_level'], len(local_drives), ' '.join(
+                    ["/dev/" + elem + "2" for elem in local_drives])), shell=True)
+
+            LOG.warning("Debug create /dev/md1 stdout: {}".format(out))
+            LOG.warning("Debug create /dev/md1 stderr: {}".format(err))
 
         return {'logical_disks':
                 [{'raid_level': raid_config['logical_disks'][0]['raid_level'],
@@ -314,6 +322,20 @@ class CernHardwareManager(hardware.GenericHardwareManager):
                         raise processutils.ProcessExecutionError(err)
                 except (processutils.ProcessExecutionError, OSError) as e:
                     raise errors.CleaningError("Error erasing superblock for device {}. {}".format(device, e))
+
+        # We should also remove all the partitions created on top of /dev/sd
+        # in order not to raise an exception in create_configuration()
+
+        local_drives, _ = utils.execute("cat /proc/partitions | grep -e sd[a-z]$ | awk '{ print $4 }'", shell=True)
+        local_drives = local_drives.split()
+
+        for device in local_drives:
+            try:
+                out, err = utils.execute("parted /dev/{} --script mklabel gpt".format(device), shell=True)
+                if err:
+                    raise processutils.ProcessExecutionError(err)
+            except (processutils.ProcessExecutionError, OSError) as e:
+                raise errors.CleaningError("Error cleaning device {}. {}".format(device, e))
 
     def get_os_install_device(self):
         node = hardware.get_cached_node()
