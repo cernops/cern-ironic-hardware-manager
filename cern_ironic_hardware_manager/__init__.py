@@ -78,6 +78,7 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         """
         hardware_info = super(CernHardwareManager, self).list_hardware_info()
         hardware_info['disk_enclosures'] = self.get_disk_enclosures()
+        hardware_info['infiniband_adapters'] = self.get_infiniband_adapters()
 
         return hardware_info
 
@@ -274,7 +275,7 @@ class CernHardwareManager(hardware.GenericHardwareManager):
 
             try:
                 utils.execute("mdadm --remove {}".format(device), shell=True)
-            except:
+            except processutils.ProcessExecutionError:
                 # After successful stop this returns
                 # "mdadm: error opening /dev/md3: No such file or directory"
                 # with error code 1, which we can safely ignore
@@ -337,4 +338,18 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         # and then use utils.try_execute('modprobe', 'xyz')
 
         out, e = utils.execute("lsscsi | grep enclosu | wc -l", shell=True)
+        return int(out)
+
+    def get_infiniband_adapters(self):
+        """Detect number of infiniband network adapters
+
+        Used by list_hardware_info to populate node's properties with a number
+        of infiniband adapters connected to the device. Please note this
+        assumes all the drivers required to detect the array have been loaded
+        beforehand.
+
+        :returns: A number of infiniband network adapters
+        """
+
+        out, e = utils.execute("ip link show | grep -i link/infiniband | wc -l", shell=True)
         return int(out)
