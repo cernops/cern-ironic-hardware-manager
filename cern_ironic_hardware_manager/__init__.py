@@ -80,6 +80,8 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         hardware_info['disk_enclosures'] = self.get_disk_enclosures()
         hardware_info['infiniband_adapters'] = self.get_infiniband_adapters()
 
+        hardware_info['boot_mode'] = 'bios'
+
         return hardware_info
 
     def get_clean_steps(self, node, ports):
