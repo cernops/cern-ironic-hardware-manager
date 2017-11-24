@@ -347,11 +347,11 @@ class CernHardwareManager(hardware.GenericHardwareManager):
 
         Used by list_hardware_info to populate node's properties with a number
         of infiniband adapters connected to the device. Please note this
-        assumes all the drivers required to detect the array have been loaded
+        assumes all the drivers required to detect the device have been loaded
         beforehand.
 
         :returns: A number of infiniband network adapters
         """
 
-        out, e = utils.execute("ip link show | grep -i link/infiniband | wc -l", shell=True)
+        out, e = utils.execute("ibv_devinfo | awk '/transport[[:space:]]*:/ {{print $2}}' | grep InfiniBand | wc -l", shell=True)
         return int(out)
