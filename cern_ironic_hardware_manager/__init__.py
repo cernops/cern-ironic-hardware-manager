@@ -283,7 +283,7 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         :param ports: A list of dictionaries containing information of ports
                       for the node
         """
-        raid_devices, _ = utils.execute("cat /proc/mdstat | grep 'active raid' | awk '{ print $1 }'", shell=True)
+        raid_devices, _ = utils.execute("cat /proc/mdstat | grep 'active' | awk '{ print $1 }'", shell=True)
 
         for device in ['/dev/' + x for x in raid_devices.split()]:
             try:
