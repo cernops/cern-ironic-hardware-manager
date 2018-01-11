@@ -81,6 +81,7 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         hardware_info['infiniband_adapters'] = self.get_infiniband_adapters()
 
         hardware_info['boot_mode'] = 'bios'
+        hardware_info['disk_label'] = 'gpt'
 
         return hardware_info
 
