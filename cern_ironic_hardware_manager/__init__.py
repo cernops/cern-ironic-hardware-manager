@@ -130,15 +130,3 @@ class CernHardwareManager(hardware.GenericHardwareManager):
                 'interface': 'deploy'
             }
         ]
-
-    def erase_devices(self, node, ports):
-        """Erase any device that holds user data.
-
-        This method in its current state will erase all block devices using
-        either ATA Secure Erase or shred, depending on the system capabilities.
-        """
-        super(CernHardwareManager, self).erase_devices(node, ports)
-
-    def erase_devices_metadata(self, node, ports):
-        """Attempt to erase the disk devices metadata."""
-        super(CernHardwareManager, self).erase_devices_metadata(node, ports)
