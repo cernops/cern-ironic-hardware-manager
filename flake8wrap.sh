@@ -16,5 +16,5 @@ if test "x$1" = "x-HEAD" ; then
     diff -u --from-file /dev/null ${files} | flake8 --ignore E501 --diff "$@"
 else
     echo "Running flake8 on all files"
-    exec flake8 --ignore E501 "$@"
+    exec flake8 --ignore E501 F401 "$@"
 fi
