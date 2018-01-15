@@ -6,8 +6,8 @@ import time
 from ironic_python_agent import hardware
 from oslo_log import log
 
-from cern_ironic_hardware_manager.cleaning import upgrade_example_device_model1234_firmware
-from cern_ironic_hardware_manager.inspection import get_infiniband_adapters, get_disk_enclosures, propagate_custom_properties
+import cern_ironic_hardware_manager.cleaning
+import cern_ironic_hardware_manager.inspection
 
 LOG = log.getLogger()
 
@@ -79,7 +79,7 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         :returns: A dictionary representing inventory
         """
         hardware_info = super(CernHardwareManager, self).list_hardware_info()
-        hardware_info = propagate_custom_properties(hardware_info)
+        hardware_info = self.propagate_custom_properties(hardware_info)
 
         return hardware_info
 
@@ -130,3 +130,8 @@ class CernHardwareManager(hardware.GenericHardwareManager):
                 'interface': 'deploy'
             }
         ]
+
+    upgrade_example_device_model1234_firmware = cern_ironic_hardware_manager.cleaning.upgrade_example_device_model1234_firmware
+    get_infiniband_adapters = cern_ironic_hardware_manager.inspection.get_infiniband_adapters
+    get_disk_enclosures = cern_ironic_hardware_manager.inspection.get_disk_enclosures
+    propagate_custom_properties = cern_ironic_hardware_manager.inspection.propagate_custom_properties
