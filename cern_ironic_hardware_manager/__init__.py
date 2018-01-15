@@ -131,6 +131,18 @@ class CernHardwareManager(hardware.GenericHardwareManager):
             }
         ]
 
+    def erase_devices(self, node, ports):
+        """Erase any device that holds user data.
+
+        This method in its current state will erase all block devices using
+        either ATA Secure Erase or shred, depending on the system capabilities.
+        """
+        super(CernHardwareManager, self).erase_devices(node, ports)
+
+    def erase_devices_metadata(self, node, ports):
+        """Attempt to erase the disk devices metadata."""
+        super(CernHardwareManager, self).erase_devices_metadata(node, ports)
+
     upgrade_example_device_model1234_firmware = cern_ironic_hardware_manager.cleaning.upgrade_example_device_model1234_firmware
     get_infiniband_adapters = cern_ironic_hardware_manager.inspection.get_infiniband_adapters
     get_disk_enclosures = cern_ironic_hardware_manager.inspection.get_disk_enclosures
