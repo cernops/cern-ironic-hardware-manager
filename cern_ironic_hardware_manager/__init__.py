@@ -6,7 +6,7 @@ import time
 from ironic_python_agent import hardware
 from oslo_log import log
 
-import cern_ironic_hardware_manager.cleaning
+import cern_ironic_hardware_manager.cleaning as cleaning
 import cern_ironic_hardware_manager.inspection
 
 LOG = log.getLogger()
@@ -147,7 +147,7 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         """Attempt to erase the disk devices metadata."""
         super(CernHardwareManager, self).erase_devices_metadata(node, ports)
 
-    upgrade_example_device_model1234_firmware = cern_ironic_hardware_manager.cleaning.upgrade_example_device_model1234_firmware
-    check_ipmi_users = cern_ironic_hardware_manager.cleaning.check_ipmi_users
-    delete_configuration = cern_ironic_hardware_manager.cleaning.delete_configuration
-    create_configuration = cern_ironic_hardware_manager.cleaning.create_configuration
+    upgrade_example_device_model1234_firmware = cleaning.CernHardwareManagerCleaning.upgrade_example_device_model1234_firmware
+    check_ipmi_users = cleaning.CernHardwareManagerCleaning.check_ipmi_users
+    delete_configuration = cleaning.CernHardwareManagerCleaning.delete_configuration
+    create_configuration = cleaning.CernHardwareManagerCleaning.create_configuration
