@@ -1,15 +1,6 @@
 from ironic_python_agent import utils
 
 
-def propagate_custom_properties(hardware_info):
-    hardware_info['boot_mode'] = 'bios'
-    hardware_info['disk_label'] = 'gpt'
-    hardware_info['infiniband_adapters'] = get_infiniband_adapters()
-    hardware_info['disk_enclosures'] = get_disk_enclosures()
-
-    return hardware_info
-
-
 def get_infiniband_adapters():
     """Detect number of infiniband network adapters
 

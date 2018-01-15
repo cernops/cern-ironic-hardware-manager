@@ -79,7 +79,11 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         :returns: A dictionary representing inventory
         """
         hardware_info = super(CernHardwareManager, self).list_hardware_info()
-        hardware_info = self.propagate_custom_properties(hardware_info)
+
+        hardware_info['boot_mode'] = 'bios'
+        hardware_info['disk_label'] = 'gpt'
+        hardware_info['infiniband_adapters'] = cern_ironic_hardware_manager.inspection.get_infiniband_adapters
+        hardware_info['disk_enclosures'] = cern_ironic_hardware_manager.inspection.get_disk_enclosures
 
         return hardware_info
 
@@ -144,6 +148,6 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         super(CernHardwareManager, self).erase_devices_metadata(node, ports)
 
     upgrade_example_device_model1234_firmware = cern_ironic_hardware_manager.cleaning.upgrade_example_device_model1234_firmware
-    get_infiniband_adapters = cern_ironic_hardware_manager.inspection.get_infiniband_adapters
-    get_disk_enclosures = cern_ironic_hardware_manager.inspection.get_disk_enclosures
-    propagate_custom_properties = cern_ironic_hardware_manager.inspection.propagate_custom_properties
+    check_ipmi_users = cern_ironic_hardware_manager.cleaning.check_ipmi_users
+    delete_configuration = cern_ironic_hardware_manager.cleaning.delete_configuration
+    create_configuration = cern_ironic_hardware_manager.cleaning.create_configuration
