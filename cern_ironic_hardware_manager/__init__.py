@@ -82,6 +82,7 @@ class CernHardwareManager(hardware.GenericHardwareManager):
 
         hardware_info['boot_mode'] = 'bios'
         hardware_info['disk_label'] = 'gpt'
+        hardware_info['cpu_extras'] = self.get_cpu()
 
         return hardware_info
 
@@ -356,3 +357,15 @@ class CernHardwareManager(hardware.GenericHardwareManager):
 
         out, e = utils.execute("ibv_devinfo | awk '/transport[[:space:]]*:/ {{print $2}}' | grep InfiniBand | wc -l", shell=True)
         return int(out)
+
+    def get_cpu(self):
+        result = {}
+
+        result['name'], e = utils.execute("lscpu | awk '/Model name[[:space:]]*:/ {{$1=$2=\"\"; print $0}}'", shell=True)
+        result['family'], e = utils.execute("lscpu | awk '/CPU family[[:space:]]*:/ {{print $3}}'", shell=True)
+        result['model'], e = utils.execute("lscpu | awk '/Model[[:space:]]*:/ {{print $2}}'", shell=True)
+        result['stepping'], e = utils.execute("lscpu | awk '/Stepping[[:space:]]*:/ {{print $2}}'", shell=True)
+
+        result = {k: v.strip() for k, v in result.items()}
+
+        return result
