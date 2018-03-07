@@ -82,7 +82,10 @@ class CernHardwareManager(hardware.GenericHardwareManager):
 
         hardware_info['boot_mode'] = 'bios'
         hardware_info['disk_label'] = 'gpt'
-        hardware_info['cpu_extras'] = self.get_cpu()
+
+        # (makowals) Each value is stored in a separate key as ironic driver prefers to have capabilities
+        # without nested jsons, i.e. in a form of key:val
+        hardware_info['cpu_name'], hardware_info['cpu_family'], hardware_info['cpu_model'], hardware_info['cpu_stepping'] = self.get_cpu()
 
         return hardware_info
 
@@ -361,11 +364,11 @@ class CernHardwareManager(hardware.GenericHardwareManager):
     def get_cpu(self):
         result = {}
 
-        result['name'], e = utils.execute("lscpu | awk '/Model name[[:space:]]*:/ {{$1=$2=\"\"; print $0}}'", shell=True)
-        result['family'], e = utils.execute("lscpu | awk '/CPU family[[:space:]]*:/ {{print $3}}'", shell=True)
-        result['model'], e = utils.execute("lscpu | awk '/Model[[:space:]]*:/ {{print $2}}'", shell=True)
-        result['stepping'], e = utils.execute("lscpu | awk '/Stepping[[:space:]]*:/ {{print $2}}'", shell=True)
+        result['cpu_name'], e = utils.execute("lscpu | awk '/Model name[[:space:]]*:/ {{$1=$2=\"\"; print $0}}'", shell=True)
+        result['cpu_family'], e = utils.execute("lscpu | awk '/CPU family[[:space:]]*:/ {{print $3}}'", shell=True)
+        result['cpu_model'], e = utils.execute("lscpu | awk '/Model[[:space:]]*:/ {{print $2}}'", shell=True)
+        result['cpu_stepping'], e = utils.execute("lscpu | awk '/Stepping[[:space:]]*:/ {{print $2}}'", shell=True)
 
         result = {k: v.strip() for k, v in result.items()}
 
-        return result
+        return result['cpu_name'], result['cpu_family'], result['cpu_model'], result['cpu_stepping']
