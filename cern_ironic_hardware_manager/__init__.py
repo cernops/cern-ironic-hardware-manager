@@ -225,34 +225,16 @@ class CernHardwareManager(hardware.GenericHardwareManager):
             raise Exception("Partitions {} detected. Aborting".format(
                 local_partitions.strip()))
 
-        # We want to label each physical drive as GPT and create two partitions
-        # where the first one will be BIOS BOOT and the second one standard
-        # for user data
-        for device in local_drives:
-            try:
-                out, err = utils.execute("parted /dev/{} --script mklabel gpt mkpart primary ext4 0% 200 mkpart primary ext4 200 100% set 1 bios_grub on".format(device), shell=True)
-                if err:
-                    raise processutils.ProcessExecutionError(err)
-            except (processutils.ProcessExecutionError, OSError) as e:
-                raise errors.CleaningError("Error partitioning device {}. {}".format(device, e))
-
         for logical_disk in raid_config['logical_disks']:
-            # We create RAID array from each partition (not physical device !)
-            # At this moment we assume there will be exactly two iterations.
+            # We create RAID array from each physical device
+            # At this moment there should be only one iteration (one RAID device).
             # Metadata v1.0 is required as we want to put superblock at the end
             out, err = utils.execute("mdadm --create /dev/md0 --level={} --raid-devices={} {} --force --metadata=1.0".format(
                 logical_disk['raid_level'], len(local_drives), ' '.join(
-                    ["/dev/" + elem + "1" for elem in local_drives])), shell=True)
+                    ["/dev/" + elem for elem in local_drives])), shell=True)
 
-            LOG.warning("Debug create /dev/md0 stdout: {}".format(out))
-            LOG.warning("Debug create /dev/md0 stderr: {}".format(err))
-
-            out, err = utils.execute("mdadm --create /dev/md1 --level={} --raid-devices={} {} --force --metadata=1.0".format(
-                logical_disk['raid_level'], len(local_drives), ' '.join(
-                    ["/dev/" + elem + "2" for elem in local_drives])), shell=True)
-
-            LOG.warning("Debug create /dev/md1 stdout: {}".format(out))
-            LOG.warning("Debug create /dev/md1 stderr: {}".format(err))
+            LOG.warning("Debug create /dev/md stdout: {}".format(out))
+            LOG.warning("Debug create /dev/md stderr: {}".format(err))
 
         return {'logical_disks':
                 [{'raid_level': raid_config['logical_disks'][0]['raid_level'],
