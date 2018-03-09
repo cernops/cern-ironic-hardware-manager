@@ -305,20 +305,6 @@ class CernHardwareManager(hardware.GenericHardwareManager):
                 except (processutils.ProcessExecutionError, OSError) as e:
                     raise errors.CleaningError("Error erasing superblock for device {}. {}".format(device, e))
 
-        # We should also remove all the partitions created on top of /dev/sd
-        # in order not to raise an exception in create_configuration()
-
-        local_drives, _ = utils.execute("cat /proc/partitions | grep -e sd[a-z]$ | awk '{ print $4 }'", shell=True)
-        local_drives = local_drives.split()
-
-        for device in local_drives:
-            try:
-                out, err = utils.execute("parted /dev/{} --script mklabel gpt".format(device), shell=True)
-                if err:
-                    raise processutils.ProcessExecutionError(err)
-            except (processutils.ProcessExecutionError, OSError) as e:
-                raise errors.CleaningError("Error cleaning device {}. {}".format(device, e))
-
     def get_os_install_device(self):
         node = hardware.get_cached_node()
         if node is not None and node.get('target_raid_config', {}) != {}:
