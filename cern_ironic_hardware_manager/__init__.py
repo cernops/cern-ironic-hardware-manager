@@ -308,7 +308,7 @@ class CernHardwareManager(hardware.GenericHardwareManager):
     def get_os_install_device(self):
         node = hardware.get_cached_node()
         if node is not None and node.get('target_raid_config', {}) != {}:
-            return "/dev/md127"
+            return "/dev/md0"
         return super(CernHardwareManager, self).get_os_install_device()
 
     def check_ipmi_users(self, node, ports):
