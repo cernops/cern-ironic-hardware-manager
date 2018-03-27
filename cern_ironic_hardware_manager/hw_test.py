@@ -1,7 +1,7 @@
 #!/usr/bin/python -u
 
 from oslo_log import log
-import os.path
+import yum
 from multiprocessing import cpu_count
 from multiprocessing.pool import ThreadPool
 import subprocess
@@ -79,23 +79,19 @@ def run_cmd_proc(no_procs, my_cmd, t_out = False):
         TODO AG: log details on the command and return code
         TODO AG: parse test logs?
     """
+    final_cmd = my_cmd
     # build command with timeout, if t_out is specified
     if t_out:
         # TODO AG: find a way to keep the *one* space when splitting
         # { /usr/bin/memtester 1000 1;}, after opening curly bracket
-        t_out_cmd = ['/usr/bin/timeout', '10', 'bash', '-c']
-        my_cmd = '{{ {};}}'.format(my_cmd)
-        t_out_cmd.append(my_cmd)
-
-        my_cmd = "/usr/bin/timeout {0} -c bash '{{  {1} }}'".format(t_out, my_cmd).split(' ')
-
-        t_out_cmd  = '/usr/bin/timeout {} bash -c "{{ '.format(t_out)
-        t_out_cmd .= '{}; }}"'.format(my_cmd)
-
+        final_cmd = ['/usr/bin/timeout', t_out, 'bash', '-c']
+        final_cmd.append('{{ {};}}'.format(my_cmd))
+    else:
+        final_cmd = my_cmd.split()
     try:
         pool = ThreadPool(no_procs)
-        for i in range(no_procs):
-            pool.apply_async(subprocess.check_output, (my_cmd,))
+        for _ in range(no_procs):
+            pool.apply_async(subprocess.check_output, (final_cmd,))
         pool.close()
         pool.join()
     except subprocess.CalledProcessError as exc:
@@ -106,7 +102,7 @@ def run_cmd_proc(no_procs, my_cmd, t_out = False):
 
 
 class Tests(object):
-    def __init__(self, parameter_list):
+    def __init__(self):
         self.num_cpus = cpu_count()
 
     def test_memory(self, t_out = False):
@@ -135,13 +131,13 @@ class Tests(object):
             LOG.info("{} MiB per processing unit will be tested".format(self.mb_per_cpu))
             # start as many memory test subprocesses as CPUs
             LOG.info("Starting memory tests")
-            self.mem_cmd  = '{} {} {}'.format(self.MEMTESTER, str(self.mb_per_cpu), "1")
+            self.mem_cmd = '{} {} {}'.format(self.MEMTESTER, str(self.mb_per_cpu), "1")
             run_cmd_proc(self.num_cpus, self.mem_cmd, self.timeout)
             LOG.info("Finished memory tests")
         else:
             raise Exception('Failed to find MemFree in /proc/meminfo')
 
-    def test_cpu(self, t_out = '48h'):
+    def test_cpu(self, t_out='48h'):
         """ Stress test CPU
         based on burnK7, burnMMX and burnP6 (from cpuburn package);
         TODO AG: use burnbx for cpu cache testing
@@ -151,29 +147,29 @@ class Tests(object):
         self.known_CPU = False
         # get CPU manufacturer
         self.cpuinfo = open('/proc/cpuinfo').read()
-        match = re.search(r'vendor_id\t:\s+(\S+)',self.cpuinfo)
+        match = re.search(r'vendor_id\t:\s+(\S+)', self.cpuinfo)
         self.cpu_model = match.groups()[0]
         if "Intel" in self.cpu_model:
-            self.cpu_cmd = '{/opt/cpu_test/burnP6 & /opt/cpu_test/burnMMX;}'
+            self.cpu_cmd = '/opt/cpu_test/burnP6& /opt/cpu_test/burnMMX'
             self.known_CPU = True
         elif "AMD" in self.cpu_model:
-            self.cpu_cmd = '{/opt/cpu_test/burnK7 & /opt/cpu_test/burnMMX;}'
+            self.cpu_cmd = '/opt/cpu_test/burnK7& /opt/cpu_test/burnMMX'
             self.known_CPU = True
         # start CPU tests
         if self.known_CPU:
             LOG.info("Starting CPU tests")
             run_cmd_proc(self.num_cpus, self.cpu_cmd, self.timeout)
-            LOG.info("Finished memory tests")
+            LOG.info("Finished CPU tests")
         else:
             LOG.error('{} is not a known CPU model'.format(self.cpu_model))
             raise Exception('Unknown CPU model')
 
     def test_disk(self, parameter_list):
         pass
-    
+
     def test_hepspec(self, parameter_list):
         pass
-    
+
     def test_network(self, parameter_list):
         pass
-    
+
