@@ -308,7 +308,8 @@ class CernHardwareManager(hardware.GenericHardwareManager):
 
     def get_os_install_device(self):
         node_properties = hardware.get_cached_node().get('properties', {})
-        raid_enabled = node_properties.get('cern_raid', {})
+        node_capabilities = node_properties.get('capabilities', {})
+        raid_enabled = node_capabilities.get('cern_raid', {})
         if raid_enabled:
             return "/dev/md0"
         return super(CernHardwareManager, self).get_os_install_device()
