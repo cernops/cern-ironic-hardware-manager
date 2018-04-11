@@ -306,10 +306,11 @@ class CernHardwareManager(hardware.GenericHardwareManager):
                     raise errors.CleaningError("Error erasing superblock for device {}. {}".format(device, e))
 
     def get_os_install_device(self):
-        # node = hardware.get_cached_node()
-        # if node is not None and node.get('target_raid_config', {}) != {}:
-        return "/dev/md0"
-        # return super(CernHardwareManager, self).get_os_install_device()
+        node_properties = hardware.get_cached_node().get('properties', {})
+        raid_enabled = node_properties.get('cern_raid', {})
+        if raid_enabled:
+            return "/dev/md0"
+        return super(CernHardwareManager, self).get_os_install_device()
 
     def check_ipmi_users(self, node, ports):
         """Check users having IPMI access with admin rights
