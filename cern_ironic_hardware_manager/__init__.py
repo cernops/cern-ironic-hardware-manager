@@ -250,7 +250,8 @@ class CernHardwareManager(hardware.GenericHardwareManager):
         if raid_config['logical_disks'][0]['size_gb'] != "MAX":
             return False
 
-        accepted_levels = ["0", "1", "10"]
+        # accepted_levels = ["0", "1", "10"]
+        accepted_levels = ["1"]
         if raid_config['logical_disks'][0]['raid_level'] not in accepted_levels:
             return False
 
